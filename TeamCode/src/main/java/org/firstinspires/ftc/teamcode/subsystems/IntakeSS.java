@@ -5,6 +5,7 @@ import static org.firstinspires.ftc.teamcode.subsystems.constant.IntakeConstants
 import static org.firstinspires.ftc.teamcode.subsystems.constant.IntakeConstants.gateSettleTime;
 import static org.firstinspires.ftc.teamcode.subsystems.constant.IntakeConstants.intakeSpeed;
 import static org.firstinspires.ftc.teamcode.subsystems.constant.IntakeConstants.openPos;
+import static org.firstinspires.ftc.teamcode.subsystems.constant.IntakeConstants.transferGateSettleTime;
 import static org.firstinspires.ftc.teamcode.subsystems.constant.IntakeConstants.transferSpeed;
 
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -133,7 +134,7 @@ public class IntakeSS implements SS_Interface {
         gateClosingForIntake = false;
 
         // Do not feed until the gate has had time to open.
-        if (gateTimer.milliseconds() < gateSettleTime) {
+        if (gateTimer.milliseconds() < transferGateSettleTime) {
             stopMotors();
             write();
             return;

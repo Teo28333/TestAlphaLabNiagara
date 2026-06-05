@@ -17,4 +17,6 @@ public class IntakeConstants {
     public static double closePos = 0.0;
     // Wait time after moving the gate before rollers start.
     public static double gateSettleTime = 150.0;
+    // Transfer opens the gate earlier and waits this long before running rollers.
+    public static double transferGateSettleTime = 750.0;
 }
