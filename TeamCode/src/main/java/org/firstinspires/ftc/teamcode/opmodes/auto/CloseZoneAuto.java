@@ -9,41 +9,64 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import org.firstinspires.ftc.teamcode.robot.RobotAuton;
 
 abstract class CloseZoneAuto extends OpMode {
+    // How long the transfer motors run when feeding balls into the shooter.
     private static final double SHOOT_TIME_MS = 1750.0;
+    // Base path coordinates are written for red. Blue uses Pose.mirror().
     private static final Pose RED_START_POSE = new Pose(
             19.034629404617252,
             117.86452004860269,
             Math.toRadians(146)
     );
-    private static final Pose RED_SHOOTING_POSE = new Pose(49.295, 91.878);
+    // Shared shooting location used after preload and each spike pickup.
+    private static final Pose RED_SHOOTING_POSE = new Pose(49.295, 91.878, Math.toRadians(146));
 
+    // RobotAuton owns follower, intake, shooter, and auto state helpers.
     private RobotAuton robot;
+    // All Pedro paths are built after robot exists because they need robot.follower.
     private Paths paths;
+    // Outer routine state: this chooses which path/action comes next.
     private State state = State.GO_SHOOT_PRELOAD;
 
     private enum State {
+        // Drive from start to the first shooting pose.
         GO_SHOOT_PRELOAD,
+        // Feed the preload into the shooter.
         SHOOT_PRELOAD,
+        // Drive to first spike while intaking.
         GO_INTAKE_FIRST_SPIKE,
+        // Drive back to the shooting pose.
         GO_SHOOT_FIRST_SPIKE,
+        // Feed first spike balls.
         SHOOT_FIRST_SPIKE,
+        // Drive to second spike while intaking.
         GO_INTAKE_SECOND_SPIKE,
+        // Drive back to the shooting pose.
         GO_SHOOT_SECOND_SPIKE,
+        // Feed second spike balls.
         SHOOT_SECOND_SPIKE,
+        // Only 12-ball auto: drive to third spike while intaking.
         GO_INTAKE_THIRD_SPIKE,
+        // Only 12-ball auto: drive back to the shooting pose.
         GO_SHOOT_THIRD_SPIKE,
+        // Only 12-ball auto: feed third spike balls.
         SHOOT_THIRD_SPIKE,
+        // Drive to the final parking/exit location.
         LEAVE_ZONE,
+        // Finished; robot should sit idle.
         DONE
     }
 
+    // Small wrapper classes provide alliance without duplicating the whole routine.
     protected abstract boolean isBlueAlliance();
+    // Small wrapper classes choose between 9-ball and 12-ball versions.
     protected abstract boolean isTwelveBallAuto();
 
     @Override
     public void init() {
+        // Build robot and paths while the Driver Station is in INIT.
         robot = new RobotAuton(hardwareMap, telemetry, isBlueAlliance());
         paths = new Paths();
+        // Start at the red pose or mirrored blue pose.
         robot.start(alliancePose(RED_START_POSE));
 
         telemetry.addLine(opModeName() + " ready");
@@ -52,6 +75,7 @@ abstract class CloseZoneAuto extends OpMode {
 
     @Override
     public void start() {
+        // First action after Play: spin shooter and drive to preload shot location.
         state = State.GO_SHOOT_PRELOAD;
         robot.enableShooterMode();
         robot.followPath(paths.goShootPreload);
@@ -59,11 +83,13 @@ abstract class CloseZoneAuto extends OpMode {
 
     @Override
     public void loop() {
+        // Let RobotAuton update path following, intake/shooter, and its internal state.
         robot.update();
 
+        // Outer state machine decides the next action when RobotAuton finishes the current one.
         switch (state) {
             case GO_SHOOT_PRELOAD:
-                if (!robot.isBusy()) {
+                if (readyToShoot()) {
                     robot.transferFor(SHOOT_TIME_MS);
                     state = State.SHOOT_PRELOAD;
                 }
@@ -84,7 +110,7 @@ abstract class CloseZoneAuto extends OpMode {
                 break;
 
             case GO_SHOOT_FIRST_SPIKE:
-                if (!robot.isBusy()) {
+                if (readyToShoot()) {
                     robot.transferFor(SHOOT_TIME_MS);
                     state = State.SHOOT_FIRST_SPIKE;
                 }
@@ -105,7 +131,7 @@ abstract class CloseZoneAuto extends OpMode {
                 break;
 
             case GO_SHOOT_SECOND_SPIKE:
-                if (!robot.isBusy()) {
+                if (readyToShoot()) {
                     robot.transferFor(SHOOT_TIME_MS);
                     state = State.SHOOT_SECOND_SPIKE;
                 }
@@ -113,6 +139,7 @@ abstract class CloseZoneAuto extends OpMode {
 
             case SHOOT_SECOND_SPIKE:
                 if (!robot.isBusy()) {
+                    // 12-ball keeps going for a third pickup. 9-ball leaves the zone now.
                     if (isTwelveBallAuto()) {
                         robot.followPathAndIntake(paths.goIntakeThirdSpike);
                         state = State.GO_INTAKE_THIRD_SPIKE;
@@ -131,7 +158,7 @@ abstract class CloseZoneAuto extends OpMode {
                 break;
 
             case GO_SHOOT_THIRD_SPIKE:
-                if (!robot.isBusy()) {
+                if (readyToShoot()) {
                     robot.transferFor(SHOOT_TIME_MS);
                     state = State.SHOOT_THIRD_SPIKE;
                 }
@@ -146,6 +173,7 @@ abstract class CloseZoneAuto extends OpMode {
 
             case LEAVE_ZONE:
                 if (!robot.isBusy()) {
+                    // Cleanly stop follower/intake and mark the routine complete.
                     robot.forceIdle();
                     state = State.DONE;
                 }
@@ -156,14 +184,18 @@ abstract class CloseZoneAuto extends OpMode {
                 break;
         }
 
+        // Extra auto telemetry on top of RobotAuton's telemetry.
         telemetry.addData("Auto", opModeName());
         telemetry.addData("State", state);
         telemetry.addData("Path progress %", "%.1f", robot.getPathProgressPercent());
+        telemetry.addData("Shooter mode", robot.isShooterModeEnabled());
+        telemetry.addData("Waiting shooter", isWaitingForShooter());
         telemetry.update();
     }
 
     @Override
     public void stop() {
+        // Save final pose for TeleOp handoff and stop mechanisms safely.
         if (robot != null) {
             robot.savePose();
             robot.forceIdle();
@@ -171,6 +203,7 @@ abstract class CloseZoneAuto extends OpMode {
     }
 
     private Pose alliancePose(Pose redPose) {
+        // Paths are authored once on red. Blue gets the mirrored field position.
         if (!isBlueAlliance()) {
             return redPose;
         }
@@ -179,12 +212,29 @@ abstract class CloseZoneAuto extends OpMode {
     }
 
     private String opModeName() {
-        String alliance = isBlueAlliance() ? "Blue" : "Red";
+        // Build a readable telemetry name from the selected wrapper name.
+        String alliance = getClass().getSimpleName().startsWith("Blue") ? "Blue" : "Red";
         String balls = isTwelveBallAuto() ? "12 Ball" : "9 Ball";
         return alliance + " Close Zone " + balls;
     }
 
+    private boolean readyToShoot() {
+        // Do not start transfer until the path is done and the shooter is at speed.
+        return !robot.isBusy() && robot.isShooterReady();
+    }
+
+    private boolean isWaitingForShooter() {
+        return robot.isShooterModeEnabled()
+                && !robot.isBusy()
+                && !robot.isShooterReady()
+                && (state == State.GO_SHOOT_PRELOAD
+                || state == State.GO_SHOOT_FIRST_SPIKE
+                || state == State.GO_SHOOT_SECOND_SPIKE
+                || state == State.GO_SHOOT_THIRD_SPIKE);
+    }
+
     private class Paths {
+        // Individual chunks make the state machine simple to read.
         private final PathChain goShootPreload;
         private final PathChain goIntakeFirstSpike;
         private final PathChain goShootFirstSpike;
@@ -193,9 +243,11 @@ abstract class CloseZoneAuto extends OpMode {
         private final PathChain goIntakeThirdSpike;
         private final PathChain goShootThirdSpike;
         private final PathChain leaveZone;
+        // Full routine path chain, currently built for reference/tuning but not used by loop().
         private final PathChain mainChain;
 
         private Paths() {
+            // Start to shooting pose for the preload.
             goShootPreload = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
                             alliancePose(new Pose(19.035, 117.865)),
@@ -203,10 +255,11 @@ abstract class CloseZoneAuto extends OpMode {
                     ))
                     .setLinearHeadingInterpolation(
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(146))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading()
+                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(146))).getHeading()
                     )
                     .build();
 
+            // Shooting pose to first spike pickup.
             goIntakeFirstSpike = robot.follower.pathBuilder()
                     .addPath(new BezierCurve(
                             alliancePose(RED_SHOOTING_POSE),
@@ -216,6 +269,7 @@ abstract class CloseZoneAuto extends OpMode {
                     .setTangentHeadingInterpolation()
                     .build();
 
+            // First spike back to shooting pose.
             goShootFirstSpike = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
                             alliancePose(new Pose(17.632, 82.311)),
@@ -227,6 +281,7 @@ abstract class CloseZoneAuto extends OpMode {
                     )
                     .build();
 
+            // Shooting pose to second spike pickup.
             goIntakeSecondSpike = robot.follower.pathBuilder()
                     .addPath(new BezierCurve(
                             alliancePose(RED_SHOOTING_POSE),
@@ -236,6 +291,7 @@ abstract class CloseZoneAuto extends OpMode {
                     .setTangentHeadingInterpolation()
                     .build();
 
+            // Second spike back to shooting pose.
             goShootSecondSpike = robot.follower.pathBuilder()
                     .addPath(new BezierCurve(
                             alliancePose(new Pose(14.063, 57.203)),
@@ -248,6 +304,7 @@ abstract class CloseZoneAuto extends OpMode {
                     )
                     .build();
 
+            // Shooting pose to third spike pickup for the 12-ball routine.
             goIntakeThirdSpike = robot.follower.pathBuilder()
                     .addPath(new BezierCurve(
                             alliancePose(RED_SHOOTING_POSE),
@@ -257,6 +314,7 @@ abstract class CloseZoneAuto extends OpMode {
                     .setTangentHeadingInterpolation()
                     .build();
 
+            // Third spike back to shooting pose for the 12-ball routine.
             goShootThirdSpike = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
                             alliancePose(new Pose(12.812, 34.184)),
@@ -268,6 +326,7 @@ abstract class CloseZoneAuto extends OpMode {
                     )
                     .build();
 
+            // Final path after the last shooting cycle.
             leaveZone = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
                             alliancePose(RED_SHOOTING_POSE),
@@ -279,6 +338,7 @@ abstract class CloseZoneAuto extends OpMode {
                     )
                     .build();
 
+            // Same route as one continuous chain; useful for visualization or future simplification.
             mainChain = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
                             alliancePose(new Pose(19.035, 117.865)),

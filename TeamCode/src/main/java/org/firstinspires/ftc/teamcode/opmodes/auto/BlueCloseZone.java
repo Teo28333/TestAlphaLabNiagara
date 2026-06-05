@@ -6,11 +6,13 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 public class BlueCloseZone extends CloseZoneAuto {
     @Override
     protected boolean isBlueAlliance() {
-        return true;
+        // Names were inverted on the robot; this Blue opmode uses the base/red path set.
+        return false;
     }
 
     @Override
     protected boolean isTwelveBallAuto() {
+        // true means run the longer routine that collects the third spike set.
         return true;
     }
 }

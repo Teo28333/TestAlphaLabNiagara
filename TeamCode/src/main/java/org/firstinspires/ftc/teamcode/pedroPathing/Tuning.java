@@ -43,18 +43,23 @@ import java.util.List;
 @Configurable
 @TeleOp(name = "Tuning", group = "Pedro Pathing")
 public class Tuning extends SelectableOpMode {
+    // Shared follower used by whichever tuning opmode is selected from the menu.
     public static Follower follower;
 
     @IgnoreConfigurable
+    // History of robot poses used for drawing the trail on Panels.
     static PoseHistory poseHistory;
 
     @IgnoreConfigurable
+    // Panels telemetry helper, separate from normal FTC telemetry.
     static TelemetryManager telemetryM;
 
     @IgnoreConfigurable
+    // Temporary list of tuning changes applied while the robot is powered.
     static ArrayList<String> changes = new ArrayList<>();
 
     public Tuning() {
+        // Build the Driver Station menu of Pedro Pathing tuning tools.
         super("Select a Tuning OpMode", s -> {
             s.folder("Localization", l -> {
                 l.add("Localization Test", LocalizationTest::new);
@@ -91,6 +96,7 @@ public class Tuning extends SelectableOpMode {
 
     @Override
     public void onSelect() {
+        // Recreate follower so each selected tuner starts with current constants and hardware.
         if (follower == null) {
             follower = Constants.createFollower(hardwareMap);
             PanelsConfigurables.INSTANCE.refreshClass(this);
@@ -100,6 +106,7 @@ public class Tuning extends SelectableOpMode {
 
         follower.setStartingPose(new Pose());
 
+        // Save pose history and telemetry handles used by the selected tuner.
         poseHistory = follower.getPoseHistory();
 
         telemetryM = PanelsTelemetry.INSTANCE.getTelemetry();
@@ -109,6 +116,7 @@ public class Tuning extends SelectableOpMode {
     public void onLog(List<String> lines) {}
 
     public static void drawCurrent() {
+        // Draw only the current robot pose on Panels.
         try {
             Drawing.drawRobot(follower.getPose());
             Drawing.sendPacket();
@@ -118,6 +126,7 @@ public class Tuning extends SelectableOpMode {
     }
 
     public static void drawCurrentAndHistory() {
+        // Draw both the robot trail and the current robot pose.
         Drawing.drawPoseHistory(poseHistory);
         drawCurrent();
     }
@@ -140,10 +149,12 @@ public class Tuning extends SelectableOpMode {
  * @version 1.0, 5/6/2024
  */
 class LocalizationTest extends OpMode {
+    // When enabled, prints detailed drivetrain debug text.
     boolean debugStringEnabled = false;
 
     @Override
     public void init() {
+        // Start in field center for easy localization testing.
         follower.setStartingPose(new Pose(72,72));
     }
 
@@ -1427,13 +1438,17 @@ class Circle extends OpMode {
  * @author Kabir Goyal
  */
 class AnalogMinMaxTuner extends OpMode {
-    //populate the below with your names for the servos and encoders
+    // Populate the below with your names for the servos and encoders.
     public String[] encoderNames = {"leftFrontEncoder", "rightFrontEncoder", "leftBackEncoder", "rightBackEncoder"};
+    // Analog encoder hardware objects filled from hardwareMap in init().
     public AnalogInput[] encoders = new AnalogInput[encoderNames.length];
+    // Lowest voltage seen for each analog encoder.
     public double[] minVoltages = new double[encoderNames.length];
+    // Highest voltage seen for each analog encoder.
     public double[] maxVoltages = new double[encoderNames.length];
 
-    public List<LynxModule> lynxModules; //js to improve loop times a bit yk
+    // Hubs are cached manually to improve loop times.
+    public List<LynxModule> lynxModules;
 
     public void start() {
     }
@@ -1454,7 +1469,8 @@ class AnalogMinMaxTuner extends OpMode {
 
         for (int i = 0; i < encoders.length; i++)  {
             encoders[i] = hardwareMap.get(AnalogInput.class, encoderNames[i]);
-            minVoltages[i] = 5; //bigger value than should ever be read
+            // Start above the normal analog range so the first real reading becomes the minimum.
+            minVoltages[i] = 5;
         }
     }
 
@@ -1653,12 +1669,16 @@ class OffsetsTuner extends OpMode {
  * @version 1.1, 5/19/2025
  */
 class Drawing {
-    public static final double ROBOT_RADIUS = 9; // woah
+    // Radius used to draw the robot circle on the Panels field.
+    public static final double ROBOT_RADIUS = 9;
+    // Panels field object that receives drawing commands.
     private static final FieldManager panelsField = PanelsField.INSTANCE.getField();
 
+    // Style for the current robot position.
     private static final Style robotLook = new Style(
             "", "#3F51B5", 0.75
     );
+    // Style for historical robot positions.
     private static final Style historyLook = new Style(
             "", "#4CAF50", 0.75
     );

@@ -4,14 +4,20 @@ import org.firstinspires.ftc.teamcode.subsystems.IntakeSS;
 
 public class IntakeCommands {
 
+    // This class does not touch hardware directly. It only decides which intake mode should run.
     private final IntakeSS intake;
     private Mode currentMode = Mode.IDLE;
 
     private enum Mode {
+        // Motors off, gate closed.
         IDLE,
+        // Bring game pieces into the robot.
         INTAKING,
+        // Push game pieces back out of the intake.
         OUTTAKING,
+        // Open the gate without running rollers.
         OPEN_GATE,
+        // Move game pieces from intake toward the shooter/indexer path.
         TRANSFERRING
     }
 
@@ -20,6 +26,7 @@ public class IntakeCommands {
     }
 
     public void update() {
+        // Run exactly one intake behavior based on the current state.
         switch (currentMode) {
             case INTAKING:
                 intake.intakeCMD();
@@ -45,6 +52,7 @@ public class IntakeCommands {
     }
 
     public void intake() {
+        // Starting intake fresh clears the old current-trigger and gate timers.
         if (currentMode != Mode.INTAKING) {
             intake.resetIntake();
         }
@@ -88,6 +96,7 @@ public class IntakeCommands {
     }
 
     private void setMode(Mode mode) {
+        // All state changes pass through here, making the current mode easy to track.
         currentMode = mode;
     }
 }

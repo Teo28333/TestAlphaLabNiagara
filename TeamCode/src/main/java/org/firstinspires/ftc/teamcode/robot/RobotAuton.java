@@ -17,41 +17,62 @@ import org.firstinspires.ftc.teamcode.subsystems.ShooterSS;
 import java.util.List;
 
 public class RobotAuton {
+    // Public so autonomous opmodes can build paths with the same follower object.
     public final Follower follower;
+    // Public subsystem handles are available if an auto ever needs direct access.
     public final IntakeSS intake;
     public final ShooterSS shooter;
+    // Intake commands choose the current intake mode without exposing motor details.
     public final IntakeCommands intakeCommands;
 
+    // FTC telemetry object used to print autonomous status to the Driver Station.
     private final Telemetry telemetry;
+    // Control hubs are manually cache-cleared each loop for fresh hardware data.
     private final List<LynxModule> controlHubs;
+    // Alliance decides mirrored paths and which goal the shooter targets.
     private final boolean isBlueAlliance;
+    // One timer is reused for timed intake, transfer, and intake-while-driving actions.
     private final ElapsedTime actionTimer = new ElapsedTime();
 
+    // Current high-level autonomous action.
     private State currentState = State.IDLE;
+    // Time limit for simple timed actions like intakeFor() and transferFor().
     private double actionTimeoutMs = 0.0;
+    // Optional time limit for intake while following a path. Negative means no timeout.
     private double pathIntakeTimeoutMs = -1.0;
+    // Extra RPM added to the shooter's distance-based target.
     private double shooterRpmOffset = 0.0;
+    // Auto keeps the shooter spun up unless code explicitly disables it.
     private boolean shooterModeEnabled = true;
 
     private enum State {
+        // No path or timed subsystem action is currently running.
         IDLE,
+        // Intake is running until actionTimeoutMs expires.
         INTAKING,
+        // Transfer is running until actionTimeoutMs expires.
         TRANSFERRING,
+        // Follower is driving a path by itself.
         FOLLOWING,
+        // Follower is driving a path while intake runs.
         FOLLOWING_AND_INTAKE,
+        // Follower is driving a path while the intake gate stays open.
         FOLLOWING_AND_OPEN_GATE
     }
 
     public RobotAuton(HardwareMap hwm, Telemetry telemetry, boolean isBlueAlliance) {
         this.telemetry = telemetry;
         this.isBlueAlliance = isBlueAlliance;
+        // Slow telemetry sending a bit so the loop is not wasting time on radio updates.
         this.telemetry.setMsTransmissionInterval(RobotConstants.TELEMETRY_INTERVAL_MS);
 
+        // Manual bulk caching lets update() control when sensor/motor values refresh.
         controlHubs = hwm.getAll(LynxModule.class);
         for (LynxModule hub : controlHubs) {
             hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
         }
 
+        // Create the drive follower and every autonomous subsystem once during init.
         follower = Constants.createFollower(hwm);
         intake = new IntakeSS(hwm, telemetry);
         shooter = new ShooterSS(hwm, telemetry);
@@ -59,20 +80,25 @@ public class RobotAuton {
     }
 
     public void start(Pose startingPose) {
+        // Auto paths need a real starting pose. Null would make localization meaningless.
         if (startingPose == null) {
             throw new IllegalArgumentException("RobotAuton startingPose cannot be null");
         }
 
+        // Pedro and PoseStorage must agree on where the robot starts.
         follower.setStartingPose(startingPose);
         PoseStorage.setCurrentPose(startingPose);
     }
 
     public void update() {
+        // Refresh hardware data and let Pedro advance path following.
         clearBulkCache();
         follower.update();
 
+        // State machine: decide whether the current action is finished.
         switch (currentState) {
             case INTAKING:
+                // Timed intake stops automatically when its timeout is reached.
                 if (actionTimer.milliseconds() >= actionTimeoutMs) {
                     intakeCommands.idle();
                     currentState = State.IDLE;
@@ -80,6 +106,7 @@ public class RobotAuton {
                 break;
 
             case TRANSFERRING:
+                // Transfer keeps feeding until its timeout expires.
                 if (actionTimer.milliseconds() >= actionTimeoutMs) {
                     intakeCommands.idle();
                     currentState = State.IDLE;
@@ -89,17 +116,20 @@ public class RobotAuton {
                 break;
 
             case FOLLOWING:
+                // A plain path is done when Pedro reports it is no longer busy.
                 if (!follower.isBusy()) {
                     currentState = State.IDLE;
                 }
                 break;
 
             case FOLLOWING_AND_INTAKE:
+                // Optional timeout can stop intake before the path finishes.
                 if (pathIntakeTimeoutMs >= 0.0 && actionTimer.milliseconds() >= pathIntakeTimeoutMs) {
                     intakeCommands.idle();
                     pathIntakeTimeoutMs = -1.0;
                 }
 
+                // When the path ends, stop intake and return to idle.
                 if (!follower.isBusy()) {
                     intakeCommands.idle();
                     pathIntakeTimeoutMs = -1.0;
@@ -108,6 +138,7 @@ public class RobotAuton {
                 break;
 
             case FOLLOWING_AND_OPEN_GATE:
+                // Gate-open path returns to idle as soon as the path finishes.
                 if (!follower.isBusy()) {
                     intakeCommands.idle();
                     currentState = State.IDLE;
@@ -119,14 +150,17 @@ public class RobotAuton {
                 break;
         }
 
+        // Apply selected subsystem commands after the state machine picks them.
         intakeCommands.update();
         shooter.setRpmOffset(shooterRpmOffset);
         shooter.activateShooter(distanceToShootingGoal(), shooterModeEnabled);
+        // Keep pose available for TeleOp or later opmodes.
         savePose();
         telemetry();
     }
 
     public void intakeFor(double timeoutMs) {
+        // Start intake now and let update() stop it after timeoutMs.
         intakeCommands.intake();
         actionTimeoutMs = timeoutMs;
         currentState = State.INTAKING;
@@ -134,6 +168,7 @@ public class RobotAuton {
     }
 
     public void transferFor(double timeoutMs) {
+        // Start transfer now and let update() stop it after timeoutMs.
         intakeCommands.transfer();
         actionTimeoutMs = timeoutMs;
         currentState = State.TRANSFERRING;
@@ -141,28 +176,36 @@ public class RobotAuton {
     }
 
     public void followPath(Path path) {
+        // Default path behavior holds the final pose.
         followPath(path, true);
     }
 
     public void followPath(Path path, boolean holdEnd) {
+        // Start a single Pedro path and mark auto as busy following.
+        intakeCommands.idle();
         follower.followPath(path, holdEnd);
         currentState = State.FOLLOWING;
     }
 
     public void followPath(PathChain path) {
+        // Default path-chain behavior holds the final pose.
         followPath(path, true);
     }
 
     public void followPath(PathChain path, boolean holdEnd) {
+        // Start a Pedro path chain and mark auto as busy following.
+        intakeCommands.idle();
         follower.followPath(path, holdEnd);
         currentState = State.FOLLOWING;
     }
 
     public void followPathAndIntake(Path path) {
+        // Intake for the full path by default.
         followPathAndIntake(path, true);
     }
 
     public void followPathAndIntake(Path path, boolean holdEnd) {
+        // Drive and intake until the path is done.
         follower.followPath(path, holdEnd);
         intakeCommands.intake();
         pathIntakeTimeoutMs = -1.0;
@@ -170,10 +213,12 @@ public class RobotAuton {
     }
 
     public void followPathAndIntakeFor(Path path, double intakeTimeoutMs) {
+        // Timed intake defaults to holding the final path pose.
         followPathAndIntakeFor(path, intakeTimeoutMs, true);
     }
 
     public void followPathAndIntakeFor(Path path, double intakeTimeoutMs, boolean holdEnd) {
+        // Drive the path while intake runs for only intakeTimeoutMs.
         follower.followPath(path, holdEnd);
         intakeCommands.intake();
         pathIntakeTimeoutMs = intakeTimeoutMs;
@@ -182,10 +227,12 @@ public class RobotAuton {
     }
 
     public void followPathAndIntake(PathChain path) {
+        // Intake for the full path chain by default.
         followPathAndIntake(path, true);
     }
 
     public void followPathAndIntake(PathChain path, boolean holdEnd) {
+        // Drive the path chain and intake until the path chain is done.
         follower.followPath(path, holdEnd);
         intakeCommands.intake();
         pathIntakeTimeoutMs = -1.0;
@@ -193,10 +240,12 @@ public class RobotAuton {
     }
 
     public void followPathAndIntakeFor(PathChain path, double intakeTimeoutMs) {
+        // Timed intake defaults to holding the final path-chain pose.
         followPathAndIntakeFor(path, intakeTimeoutMs, true);
     }
 
     public void followPathAndIntakeFor(PathChain path, double intakeTimeoutMs, boolean holdEnd) {
+        // Drive the path chain while intake runs for only intakeTimeoutMs.
         follower.followPath(path, holdEnd);
         intakeCommands.intake();
         pathIntakeTimeoutMs = intakeTimeoutMs;
@@ -205,45 +254,55 @@ public class RobotAuton {
     }
 
     public void followPathAndOpenGate(PathChain path) {
+        // Open-gate path defaults to holding the final pose.
         followPathAndOpenGate(path, true);
     }
 
     public void followPathAndOpenGate(PathChain path, boolean holdEnd) {
+        // Drive the path chain while the intake gate stays open.
         follower.followPath(path, holdEnd);
         intakeCommands.openGate();
         currentState = State.FOLLOWING_AND_OPEN_GATE;
     }
 
     public void setShooterRpmOffset(double shooterRpmOffset) {
+        // Lets an auto tune shooter RPM without changing the shooter equation.
         this.shooterRpmOffset = shooterRpmOffset;
     }
 
     public void enableShooterMode() {
+        // Auto shooter control loop will run every update().
         shooterModeEnabled = true;
     }
 
     public void disableShooterMode() {
+        // Stop the auto shooter control loop and immediately shut off motors.
         shooterModeEnabled = false;
         shooter.activateShooter(0.0, false);
     }
 
     public boolean isShooterModeEnabled() {
+        // Expose shooter mode for telemetry or auto decisions.
         return shooterModeEnabled;
     }
 
     public boolean isBusy() {
+        // Auto is busy whenever its internal state is not idle.
         return currentState != State.IDLE;
     }
 
     public boolean isShooterReady() {
+        // Shooter subsystem decides readiness based on RPM tolerance.
         return shooter.isReady();
     }
 
     public boolean isBlueAlliance() {
+        // Used by auto code that needs alliance-specific behavior.
         return isBlueAlliance;
     }
 
     public void forceIdle() {
+        // Emergency cleanup: stop path following and return intake to safe idle.
         follower.breakFollowing();
         intakeCommands.idle();
         currentState = State.IDLE;
@@ -251,18 +310,22 @@ public class RobotAuton {
     }
 
     public double getPathProgressPercent() {
+        // If Pedro is not following, report complete instead of stale progress.
         if (!follower.isBusy()) {
             return 100.0;
         }
 
+        // Convert Pedro's 0.0-1.0 completion value into a clamped percentage.
         return Math.max(0.0, Math.min(100.0, follower.getPathCompletion() * 100.0));
     }
 
     public void savePose() {
+        // Store the latest localized pose globally for the next opmode.
         PoseStorage.setCurrentPose(currentFollowerPose());
     }
 
     private void telemetry() {
+        // Autonomous status lines shown on the Driver Station.
         telemetry.addData("Auton state", currentState);
         telemetry.addData("Path progress", "%.1f", getPathProgressPercent());
         telemetry.addData("Intake state", intakeCommands.getState());
@@ -271,34 +334,42 @@ public class RobotAuton {
     }
 
     private Pose currentFollowerPose() {
+        // Copy follower pose into a plain Pose object before saving it.
         return new Pose(robotX(), robotY(), robotHeading());
     }
 
     private double robotX() {
+        // Current field X from Pedro localization.
         return follower.getPose().getX();
     }
 
     private double robotY() {
+        // Current field Y from Pedro localization.
         return follower.getPose().getY();
     }
 
     private double robotHeading() {
+        // Current heading in radians from Pedro localization.
         return follower.getPose().getHeading();
     }
 
     private double shootingGoalX() {
+        // Pick the goal X coordinate for the selected alliance.
         return isBlueAlliance ? RobotConstants.SHOOTING_GOAL_X_BLUE : RobotConstants.SHOOTING_GOAL_X_RED;
     }
 
     private double shootingGoalY() {
+        // Pick the goal Y coordinate for the selected alliance.
         return isBlueAlliance ? RobotConstants.SHOOTING_GOAL_Y_BLUE : RobotConstants.SHOOTING_GOAL_Y_RED;
     }
 
     private double distanceToShootingGoal() {
+        // Shooter RPM is based on straight-line distance to the goal.
         return Math.hypot(shootingGoalX() - robotX(), shootingGoalY() - robotY());
     }
 
     private void clearBulkCache() {
+        // Manual bulk caching requires clearing each hub before fresh reads.
         for (LynxModule hub : controlHubs) {
             hub.clearBulkCache();
         }
