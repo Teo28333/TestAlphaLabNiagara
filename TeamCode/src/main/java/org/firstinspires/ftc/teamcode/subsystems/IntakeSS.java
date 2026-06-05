@@ -116,8 +116,8 @@ public class IntakeSS implements SS_Interface {
         wasTriggered = false;
         resetGateTiming();
         openGate();
-        mPow1 = -intakeSpeed / 2.0;
-        mPow2 = -intakeSpeed / 2.0;
+        mPow1 = -intakeSpeed / 1.25;
+        mPow2 = -intakeSpeed / 1.25;
         write();
     }
 

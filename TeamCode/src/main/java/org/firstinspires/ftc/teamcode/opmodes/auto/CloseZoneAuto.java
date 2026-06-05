@@ -5,25 +5,31 @@ import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.robot.RobotAuton;
+import org.firstinspires.ftc.teamcode.robot.RobotConstants;
 
 abstract class CloseZoneAuto extends OpMode {
     // How long the transfer motors run when feeding balls into the shooter.
     private static final double SHOOT_TIME_MS = 1750.0;
-    // Base path coordinates are written for red. Blue uses Pose.mirror().
-    private static final Pose RED_START_POSE = new Pose(
+    // Base path coordinates are written for blue. Red uses Pose.mirror().
+    private static final Pose BLUE_START_POSE = new Pose(
             19.034629404617252,
             117.86452004860269,
             Math.toRadians(146)
     );
     // Shared shooting location used after preload and each spike pickup.
-    private static final Pose RED_SHOOTING_POSE = new Pose(49.295, 91.878, Math.toRadians(146));
+    // Heading is calculated like TeleOp auto-aim: face from this pose toward the goal.
+    private static final Pose BLUE_SHOOTING_POSE = blueShootingPose();
 
     // RobotAuton owns follower, intake, shooter, and auto state helpers.
     private RobotAuton robot;
     // All Pedro paths are built after robot exists because they need robot.follower.
     private Paths paths;
+    // Limits how long live auto aim can keep turning while waiting for shooter RPM.
+    private final ElapsedTime aimSettleTimer = new ElapsedTime();
+    private boolean aimSettleStarted = false;
     // Outer routine state: this chooses which path/action comes next.
     private State state = State.GO_SHOOT_PRELOAD;
 
@@ -61,13 +67,23 @@ abstract class CloseZoneAuto extends OpMode {
     // Small wrapper classes choose between 9-ball and 12-ball versions.
     protected abstract boolean isTwelveBallAuto();
 
+    private static Pose blueShootingPose() {
+        double x = 43.295;
+        double y = 96.878;
+        return new Pose(x, y, autoAimHeading(x, y, RobotConstants.SHOOTING_GOAL_X_BLUE, RobotConstants.SHOOTING_GOAL_Y_BLUE));
+    }
+
+    private static double autoAimHeading(double robotX, double robotY, double goalX, double goalY) {
+        return Math.atan2(goalY - robotY, goalX - robotX);
+    }
+
     @Override
     public void init() {
         // Build robot and paths while the Driver Station is in INIT.
         robot = new RobotAuton(hardwareMap, telemetry, isBlueAlliance());
         paths = new Paths();
-        // Start at the red pose or mirrored blue pose.
-        robot.start(alliancePose(RED_START_POSE));
+        // Start at the blue base pose or mirrored red pose.
+        robot.start(alliancePose(BLUE_START_POSE));
 
         telemetry.addLine(opModeName() + " ready");
         telemetry.update();
@@ -202,13 +218,27 @@ abstract class CloseZoneAuto extends OpMode {
         }
     }
 
-    private Pose alliancePose(Pose redPose) {
-        // Paths are authored once on red. Blue gets the mirrored field position.
-        if (!isBlueAlliance()) {
-            return redPose;
+    private Pose alliancePose(Pose bluePose) {
+        // Paths are authored once on blue. Red gets the mirrored field position.
+        if (isBlueAlliance()) {
+            return bluePose;
         }
 
-        return redPose.mirror();
+        Pose redPose = bluePose.mirror();
+        if (bluePose == BLUE_SHOOTING_POSE) {
+            return new Pose(
+                    redPose.getX(),
+                    redPose.getY(),
+                    autoAimHeading(
+                            redPose.getX(),
+                            redPose.getY(),
+                            RobotConstants.SHOOTING_GOAL_X_RED,
+                            RobotConstants.SHOOTING_GOAL_Y_RED
+                    )
+            );
+        }
+
+        return redPose;
     }
 
     private String opModeName() {
@@ -219,8 +249,25 @@ abstract class CloseZoneAuto extends OpMode {
     }
 
     private boolean readyToShoot() {
-        // Do not start transfer until the path is done and the shooter is at speed.
-        return !robot.isBusy() && robot.isShooterReady();
+        if (robot.isBusy()) {
+            aimSettleStarted = false;
+            return false;
+        }
+
+        if (!aimSettleStarted) {
+            aimSettleTimer.reset();
+            aimSettleStarted = true;
+        }
+
+        // Run live auto aim briefly, but do not block transfer on aim tolerance.
+        if (aimSettleTimer.milliseconds() <= RobotConstants.AUTON_AIM_SETTLE_MS) {
+            robot.aimAtShootingGoal();
+        } else {
+            robot.stopAutoAimTurn();
+        }
+
+        // Transfer only waits for the shooter RPM to be ready.
+        return robot.isShooterReady();
     }
 
     private boolean isWaitingForShooter() {
@@ -250,19 +297,19 @@ abstract class CloseZoneAuto extends OpMode {
             // Start to shooting pose for the preload.
             goShootPreload = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
-                            alliancePose(new Pose(19.035, 117.865)),
-                            alliancePose(RED_SHOOTING_POSE)
+                            alliancePose(BLUE_START_POSE),
+                            alliancePose(BLUE_SHOOTING_POSE)
                     ))
                     .setLinearHeadingInterpolation(
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(146))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(146))).getHeading()
+                            alliancePose(BLUE_START_POSE).getHeading(),
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading()
                     )
                     .build();
 
             // Shooting pose to first spike pickup.
             goIntakeFirstSpike = robot.follower.pathBuilder()
                     .addPath(new BezierCurve(
-                            alliancePose(RED_SHOOTING_POSE),
+                            alliancePose(BLUE_SHOOTING_POSE),
                             alliancePose(new Pose(38.169, 81.905)),
                             alliancePose(new Pose(17.632, 82.311))
                     ))
@@ -273,20 +320,20 @@ abstract class CloseZoneAuto extends OpMode {
             goShootFirstSpike = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
                             alliancePose(new Pose(17.632, 82.311)),
-                            alliancePose(RED_SHOOTING_POSE)
+                            alliancePose(BLUE_SHOOTING_POSE)
                     ))
                     .setLinearHeadingInterpolation(
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(180))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading()
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading()
                     )
                     .build();
 
             // Shooting pose to second spike pickup.
             goIntakeSecondSpike = robot.follower.pathBuilder()
                     .addPath(new BezierCurve(
-                            alliancePose(RED_SHOOTING_POSE),
-                            alliancePose(new Pose(49.244, 58.389)),
-                            alliancePose(new Pose(14.063, 57.203))
+                            alliancePose(BLUE_SHOOTING_POSE),
+                            alliancePose(new Pose(49.244, 55.389)),
+                            alliancePose(new Pose(14.063, 54.203))
                     ))
                     .setTangentHeadingInterpolation()
                     .build();
@@ -294,22 +341,22 @@ abstract class CloseZoneAuto extends OpMode {
             // Second spike back to shooting pose.
             goShootSecondSpike = robot.follower.pathBuilder()
                     .addPath(new BezierCurve(
-                            alliancePose(new Pose(14.063, 57.203)),
-                            alliancePose(new Pose(38.812, 67.064)),
-                            alliancePose(RED_SHOOTING_POSE)
+                            alliancePose(new Pose(14.063, 54.203)),
+                            alliancePose(new Pose(46.812, 60.064)),
+                            alliancePose(BLUE_SHOOTING_POSE)
                     ))
                     .setLinearHeadingInterpolation(
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(180))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading()
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading()
                     )
                     .build();
 
             // Shooting pose to third spike pickup for the 12-ball routine.
             goIntakeThirdSpike = robot.follower.pathBuilder()
                     .addPath(new BezierCurve(
-                            alliancePose(RED_SHOOTING_POSE),
+                            alliancePose(BLUE_SHOOTING_POSE),
                             alliancePose(new Pose(50.394, 31.108)),
-                            alliancePose(new Pose(12.812, 34.184))
+                            alliancePose(new Pose(18.812, 34.184))
                     ))
                     .setTangentHeadingInterpolation()
                     .build();
@@ -317,23 +364,23 @@ abstract class CloseZoneAuto extends OpMode {
             // Third spike back to shooting pose for the 12-ball routine.
             goShootThirdSpike = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
-                            alliancePose(new Pose(12.812, 34.184)),
-                            alliancePose(RED_SHOOTING_POSE)
+                            alliancePose(new Pose(18.812, 34.184)),
+                            alliancePose(BLUE_SHOOTING_POSE)
                     ))
                     .setLinearHeadingInterpolation(
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(180))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading()
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading()
                     )
                     .build();
 
             // Final path after the last shooting cycle.
             leaveZone = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
-                            alliancePose(RED_SHOOTING_POSE),
+                            alliancePose(BLUE_SHOOTING_POSE),
                             alliancePose(new Pose(50.021, 119.076))
                     ))
                     .setLinearHeadingInterpolation(
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading(),
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading(),
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(180))).getHeading()
                     )
                     .build();
@@ -341,62 +388,62 @@ abstract class CloseZoneAuto extends OpMode {
             // Same route as one continuous chain; useful for visualization or future simplification.
             mainChain = robot.follower.pathBuilder()
                     .addPath(new BezierLine(
-                            alliancePose(new Pose(19.035, 117.865)),
-                            alliancePose(RED_SHOOTING_POSE)
+                            alliancePose(BLUE_START_POSE),
+                            alliancePose(BLUE_SHOOTING_POSE)
                     ))
                     .setLinearHeadingInterpolation(
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(146))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading()
+                            alliancePose(BLUE_START_POSE).getHeading(),
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading()
                     )
                     .addPath(new BezierCurve(
-                            alliancePose(RED_SHOOTING_POSE),
+                            alliancePose(BLUE_SHOOTING_POSE),
                             alliancePose(new Pose(38.169, 81.905)),
                             alliancePose(new Pose(17.632, 82.311))
                     ))
                     .setTangentHeadingInterpolation()
                     .addPath(new BezierLine(
                             alliancePose(new Pose(17.632, 82.311)),
-                            alliancePose(RED_SHOOTING_POSE)
+                            alliancePose(BLUE_SHOOTING_POSE)
                     ))
                     .setLinearHeadingInterpolation(
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(180))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading()
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading()
                     )
                     .addPath(new BezierCurve(
-                            alliancePose(RED_SHOOTING_POSE),
-                            alliancePose(new Pose(49.244, 58.389)),
-                            alliancePose(new Pose(14.063, 57.203))
+                            alliancePose(BLUE_SHOOTING_POSE),
+                            alliancePose(new Pose(49.244, 55.389)),
+                            alliancePose(new Pose(14.063, 54.203))
                     ))
                     .setTangentHeadingInterpolation()
                     .addPath(new BezierCurve(
-                            alliancePose(new Pose(14.063, 57.203)),
-                            alliancePose(new Pose(38.812, 67.064)),
-                            alliancePose(RED_SHOOTING_POSE)
+                            alliancePose(new Pose(14.063, 54.203)),
+                            alliancePose(new Pose(38.812, 64.064)),
+                            alliancePose(BLUE_SHOOTING_POSE)
                     ))
                     .setLinearHeadingInterpolation(
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(180))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading()
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading()
                     )
                     .addPath(new BezierCurve(
-                            alliancePose(RED_SHOOTING_POSE),
+                            alliancePose(BLUE_SHOOTING_POSE),
                             alliancePose(new Pose(50.394, 31.108)),
-                            alliancePose(new Pose(12.812, 34.184))
+                            alliancePose(new Pose(18.812, 34.184))
                     ))
                     .setTangentHeadingInterpolation()
                     .addPath(new BezierLine(
-                            alliancePose(new Pose(12.812, 34.184)),
-                            alliancePose(RED_SHOOTING_POSE)
+                            alliancePose(new Pose(18.812, 34.184)),
+                            alliancePose(BLUE_SHOOTING_POSE)
                     ))
                     .setLinearHeadingInterpolation(
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(180))).getHeading(),
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading()
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading()
                     )
                     .addPath(new BezierLine(
-                            alliancePose(RED_SHOOTING_POSE),
+                            alliancePose(BLUE_SHOOTING_POSE),
                             alliancePose(new Pose(50.021, 119.076))
                     ))
                     .setLinearHeadingInterpolation(
-                            alliancePose(new Pose(0.0, 0.0, Math.toRadians(135))).getHeading(),
+                            alliancePose(BLUE_SHOOTING_POSE).getHeading(),
                             alliancePose(new Pose(0.0, 0.0, Math.toRadians(180))).getHeading()
                     )
                     .build();

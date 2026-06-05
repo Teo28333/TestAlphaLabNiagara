@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.robot;
 
+import com.pedropathing.control.PIDFController;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.Path;
@@ -7,6 +8,7 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.commands.IntakeCommands;
@@ -27,12 +29,15 @@ public class RobotAuton {
 
     // FTC telemetry object used to print autonomous status to the Driver Station.
     private final Telemetry telemetry;
+    private final PIDFController headingLockController;
     // Control hubs are manually cache-cleared each loop for fresh hardware data.
     private final List<LynxModule> controlHubs;
     // Alliance decides mirrored paths and which goal the shooter targets.
     private final boolean isBlueAlliance;
     // One timer is reused for timed intake, transfer, and intake-while-driving actions.
     private final ElapsedTime actionTimer = new ElapsedTime();
+    // Separate timer for path failsafe, so timed intake/transfer actions stay accurate.
+    private final ElapsedTime pathTimer = new ElapsedTime();
 
     // Current high-level autonomous action.
     private State currentState = State.IDLE;
@@ -42,6 +47,10 @@ public class RobotAuton {
     private double pathIntakeTimeoutMs = -1.0;
     // Extra RPM added to the shooter's distance-based target.
     private double shooterRpmOffset = 0.0;
+    private double headingLockErrorRad = 0.0;
+    private double targetHeadingRad = 0.0;
+    // Telemetry flag that shows whether the last path ended because of the timeout.
+    private boolean pathTimedOut = false;
     // Auto keeps the shooter spun up unless code explicitly disables it.
     private boolean shooterModeEnabled = true;
 
@@ -74,6 +83,7 @@ public class RobotAuton {
 
         // Create the drive follower and every autonomous subsystem once during init.
         follower = Constants.createFollower(hwm);
+        headingLockController = new PIDFController(Constants.followerConstants.getCoefficientsHeadingPIDF());
         intake = new IntakeSS(hwm, telemetry);
         shooter = new ShooterSS(hwm, telemetry);
         intakeCommands = new IntakeCommands(intake);
@@ -106,6 +116,8 @@ public class RobotAuton {
                 break;
 
             case TRANSFERRING:
+                // Transfer should feed balls only; clear any stale auto-aim turn command.
+                stopAutoAimTurn();
                 // Transfer keeps feeding until its timeout expires.
                 if (actionTimer.milliseconds() >= actionTimeoutMs) {
                     intakeCommands.idle();
@@ -117,7 +129,9 @@ public class RobotAuton {
 
             case FOLLOWING:
                 // A plain path is done when Pedro reports it is no longer busy.
-                if (!follower.isBusy()) {
+                if (pathTimedOut()) {
+                    finishTimedOutPath();
+                } else if (!follower.isBusy()) {
                     currentState = State.IDLE;
                 }
                 break;
@@ -130,7 +144,9 @@ public class RobotAuton {
                 }
 
                 // When the path ends, stop intake and return to idle.
-                if (!follower.isBusy()) {
+                if (pathTimedOut()) {
+                    finishTimedOutPath();
+                } else if (!follower.isBusy()) {
                     intakeCommands.idle();
                     pathIntakeTimeoutMs = -1.0;
                     currentState = State.IDLE;
@@ -139,7 +155,9 @@ public class RobotAuton {
 
             case FOLLOWING_AND_OPEN_GATE:
                 // Gate-open path returns to idle as soon as the path finishes.
-                if (!follower.isBusy()) {
+                if (pathTimedOut()) {
+                    finishTimedOutPath();
+                } else if (!follower.isBusy()) {
                     intakeCommands.idle();
                     currentState = State.IDLE;
                 }
@@ -169,6 +187,7 @@ public class RobotAuton {
 
     public void transferFor(double timeoutMs) {
         // Start transfer now and let update() stop it after timeoutMs.
+        stopAutoAimTurn();
         intakeCommands.transfer();
         actionTimeoutMs = timeoutMs;
         currentState = State.TRANSFERRING;
@@ -184,6 +203,7 @@ public class RobotAuton {
         // Start a single Pedro path and mark auto as busy following.
         intakeCommands.idle();
         follower.followPath(path, holdEnd);
+        startPathTimer();
         currentState = State.FOLLOWING;
     }
 
@@ -196,6 +216,7 @@ public class RobotAuton {
         // Start a Pedro path chain and mark auto as busy following.
         intakeCommands.idle();
         follower.followPath(path, holdEnd);
+        startPathTimer();
         currentState = State.FOLLOWING;
     }
 
@@ -209,6 +230,7 @@ public class RobotAuton {
         follower.followPath(path, holdEnd);
         intakeCommands.intake();
         pathIntakeTimeoutMs = -1.0;
+        startPathTimer();
         currentState = State.FOLLOWING_AND_INTAKE;
     }
 
@@ -222,6 +244,7 @@ public class RobotAuton {
         follower.followPath(path, holdEnd);
         intakeCommands.intake();
         pathIntakeTimeoutMs = intakeTimeoutMs;
+        startPathTimer();
         currentState = State.FOLLOWING_AND_INTAKE;
         actionTimer.reset();
     }
@@ -236,6 +259,7 @@ public class RobotAuton {
         follower.followPath(path, holdEnd);
         intakeCommands.intake();
         pathIntakeTimeoutMs = -1.0;
+        startPathTimer();
         currentState = State.FOLLOWING_AND_INTAKE;
     }
 
@@ -249,6 +273,7 @@ public class RobotAuton {
         follower.followPath(path, holdEnd);
         intakeCommands.intake();
         pathIntakeTimeoutMs = intakeTimeoutMs;
+        startPathTimer();
         currentState = State.FOLLOWING_AND_INTAKE;
         actionTimer.reset();
     }
@@ -262,6 +287,7 @@ public class RobotAuton {
         // Drive the path chain while the intake gate stays open.
         follower.followPath(path, holdEnd);
         intakeCommands.openGate();
+        startPathTimer();
         currentState = State.FOLLOWING_AND_OPEN_GATE;
     }
 
@@ -292,8 +318,51 @@ public class RobotAuton {
     }
 
     public boolean isShooterReady() {
-        // Shooter subsystem decides readiness based on RPM tolerance.
-        return shooter.isReady();
+        // Auto uses a wider high-side RPM window so overshoot does not block transfer forever.
+        return shooter.isReadyForAuton();
+    }
+
+    public boolean aimAtShootingGoal() {
+        // Use live pose, like TeleOp heading lock, instead of trusting a fixed path heading.
+        if (follower.isBusy()) {
+            return false;
+        }
+
+        targetHeadingRad = Math.atan2(shootingGoalY() - robotY(), shootingGoalX() - robotX());
+        headingLockErrorRad = normalizeAngle(targetHeadingRad - robotHeading());
+
+        if (isAimedAtShootingGoal()) {
+            headingLockController.reset();
+            follower.startTeleopDrive();
+            follower.setTeleOpDrive(0.0, 0.0, 0.0, false, Math.toRadians(fieldCentricOffsetDeg()));
+            return true;
+        }
+
+        headingLockController.updateError(headingLockErrorRad);
+
+        double turnPower = Range.clip(
+                headingLockController.run() * autoAimTurnSign(),
+                -RobotConstants.HEADING_LOCK_MAX_TURN_POWER,
+                RobotConstants.HEADING_LOCK_MAX_TURN_POWER
+        );
+
+        follower.startTeleopDrive();
+        follower.setTeleOpDrive(0.0, 0.0, turnPower, false, Math.toRadians(fieldCentricOffsetDeg()));
+        return isAimedAtShootingGoal();
+    }
+
+    public void stopAutoAimTurn() {
+        // Keep the follower in teleop-drive mode but remove any leftover turn command.
+        headingLockController.reset();
+        follower.breakFollowing();
+        follower.startTeleopDrive();
+        follower.setTeleOpDrive(0.0, 0.0, 0.0, false, Math.toRadians(fieldCentricOffsetDeg()));
+    }
+
+    public boolean isAimedAtShootingGoal() {
+        targetHeadingRad = Math.atan2(shootingGoalY() - robotY(), shootingGoalX() - robotX());
+        headingLockErrorRad = normalizeAngle(targetHeadingRad - robotHeading());
+        return Math.abs(headingLockErrorRad) <= Math.toRadians(RobotConstants.AUTON_SHOOT_HEADING_TOL_DEG);
     }
 
     public boolean isBlueAlliance() {
@@ -328,9 +397,32 @@ public class RobotAuton {
         // Autonomous status lines shown on the Driver Station.
         telemetry.addData("Auton state", currentState);
         telemetry.addData("Path progress", "%.1f", getPathProgressPercent());
+        telemetry.addData("Path timeout", pathTimedOut);
         telemetry.addData("Intake state", intakeCommands.getState());
         telemetry.addData("Shooter mode", shooterModeEnabled);
-        telemetry.addData("Shooter ready", shooter.isReady());
+        telemetry.addData("Shooter ready", isShooterReady());
+        telemetry.addData("Auto aim target deg", "%.1f", Math.toDegrees(targetHeadingRad));
+        telemetry.addData("Auto aim error deg", "%.1f", Math.toDegrees(headingLockErrorRad));
+    }
+
+    private void startPathTimer() {
+        // Each new path gets its own 4500 ms chance to finish.
+        pathTimedOut = false;
+        pathTimer.reset();
+    }
+
+    private boolean pathTimedOut() {
+        // The failsafe only matters while Pedro still thinks a path is active.
+        return follower.isBusy() && pathTimer.milliseconds() >= RobotConstants.AUTON_PATH_TIMEOUT_MS;
+    }
+
+    private void finishTimedOutPath() {
+        // Give up on the stuck path and let the outer auto state machine continue.
+        pathTimedOut = true;
+        follower.breakFollowing();
+        intakeCommands.idle();
+        pathIntakeTimeoutMs = -1.0;
+        currentState = State.IDLE;
     }
 
     private Pose currentFollowerPose() {
@@ -363,9 +455,29 @@ public class RobotAuton {
         return isBlueAlliance ? RobotConstants.SHOOTING_GOAL_Y_BLUE : RobotConstants.SHOOTING_GOAL_Y_RED;
     }
 
+    private double fieldCentricOffsetDeg() {
+        // Match TeleOp's alliance drive frame when auto aim temporarily uses teleop drive.
+        return isBlueAlliance
+                ? RobotConstants.FIELD_CENTRIC_OFFSET_BLUE_DEG
+                : RobotConstants.FIELD_CENTRIC_OFFSET_RED_DEG;
+    }
+
+    private double autoAimTurnSign() {
+        // Red is mirrored, so its autonomous aiming correction may need the opposite turn sign.
+        return isBlueAlliance
+                ? RobotConstants.AUTON_AIM_TURN_SIGN_BLUE
+                : RobotConstants.AUTON_AIM_TURN_SIGN_RED;
+    }
+
     private double distanceToShootingGoal() {
         // Shooter RPM is based on straight-line distance to the goal.
         return Math.hypot(shootingGoalX() - robotX(), shootingGoalY() - robotY());
+    }
+
+    private static double normalizeAngle(double radians) {
+        while (radians > Math.PI) radians -= 2.0 * Math.PI;
+        while (radians < -Math.PI) radians += 2.0 * Math.PI;
+        return radians;
     }
 
     private void clearBulkCache() {

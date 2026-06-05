@@ -5,7 +5,7 @@ import com.bylazar.configurables.annotations.Configurable;
 @Configurable
 public class IntakeConstants {
     // Back roller current above this value means the intake should stop that roller.
-    public static double currentLimit = 2000;
+    public static double currentLimit = 2750;
 
     // Normal intake motor speed.
     public static double intakeSpeed = 1.0;

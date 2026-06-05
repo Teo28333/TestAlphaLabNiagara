@@ -110,7 +110,7 @@ public class Robot {
 
         // Actually run the selected intake mode and shooter behavior.
         intakeCommands.update();
-        shooter.setRpmOffset(shooterRpmOffset);
+        shooter.setRpmOffset(shooterRpmOffset + RobotConstants.TELEOP_SHOOTER_RPM_BIAS);
         shooter.activateShooter(distanceToShootingGoal(), shooterActive);
         rumbleWhenShooterBecomesReady(gamepad1);
 
@@ -162,6 +162,7 @@ public class Robot {
         telemetry.addLine("Shooter");
         telemetry.addData("Shooter active", shooterActive);
         telemetry.addData("Shooter RPM offset", "%.0f", shooterRpmOffset);
+        telemetry.addData("TeleOp RPM total offset", "%.0f", shooterRpmOffset + RobotConstants.TELEOP_SHOOTER_RPM_BIAS);
         telemetry.addData("Shooter ready", shooter.isReady());
     }
 

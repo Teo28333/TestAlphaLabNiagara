@@ -6,8 +6,8 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 public class BlueCloseZone extends CloseZoneAuto {
     @Override
     protected boolean isBlueAlliance() {
-        // Names were inverted on the robot; this Blue opmode uses the base/red path set.
-        return false;
+        // Blue alliance uses blue goal data and the base blue path directly.
+        return true;
     }
 
     @Override

@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
+import static org.firstinspires.ftc.teamcode.subsystems.constant.ShooterConstants.autonHighRpmTol;
 import static org.firstinspires.ftc.teamcode.subsystems.constant.ShooterConstants.rpmTol;
 
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -102,6 +103,13 @@ public class ShooterSS implements SS_Interface {
 
     public boolean isReady() {
         return shooterReady;
+    }
+
+    public boolean isReadyForAuton() {
+        // Auto can overshoot while waiting; use a wider high-side window so it does not get stuck.
+        return targetSpeed > 0.0
+                && currentRPM > targetSpeed - rpmTol
+                && currentRPM < targetSpeed + autonHighRpmTol;
     }
 
     public void setRpmOffset(double rpmOffset) {

@@ -18,10 +18,21 @@ public class RobotConstants {
     public static double TURN_MULTIPLIER = 0.5;
     // One D-pad press changes shooter target by this many RPM.
     public static double SHOOTER_RPM_ADJUST_STEP = 50.0;
+    // Extra RPM used only in TeleOp if driver-controlled shots land short.
+    public static double TELEOP_SHOOTER_RPM_BIAS = 1000.0;
     // Driver/operator RPM trim is clamped to plus or minus this value.
     public static double SHOOTER_RPM_OFFSET_LIMIT = 200.0;
     // Maximum turn power heading lock is allowed to command.
     public static double HEADING_LOCK_MAX_TURN_POWER = 1.0;
+    // Autonomous transfer is allowed when live auto aim is within this many degrees.
+    public static double AUTON_SHOOT_HEADING_TOL_DEG = 2.5;
+    // Auto aim turn sign can be tuned per alliance if a mirrored auto turns away from the goal.
+    public static double AUTON_AIM_TURN_SIGN_BLUE = 1.0;
+    public static double AUTON_AIM_TURN_SIGN_RED = -1.0;
+    // Live autonomous aim runs only briefly after each shooting path to avoid slow drift.
+    public static double AUTON_AIM_SETTLE_MS = 500.0;
+    // If Pedro cannot finish a path in this time, auto gives up and moves to the next step.
+    public static double AUTON_PATH_TIMEOUT_MS = 4500.0;
     // Minimum delay between telemetry packets sent to Driver Station.
     public static int TELEMETRY_INTERVAL_MS = 100;
 
@@ -37,7 +48,7 @@ public class RobotConstants {
 
     // Goal coordinates used for heading lock and distance-based shooter RPM.
     public static double SHOOTING_GOAL_X_RED = 139.5;
-    public static double SHOOTING_GOAL_Y_RED = 142.0;
+    public static double SHOOTING_GOAL_Y_RED = 137.0;
     public static double SHOOTING_GOAL_X_BLUE = 2.0;
-    public static double SHOOTING_GOAL_Y_BLUE = 142.0;
+    public static double SHOOTING_GOAL_Y_BLUE = 137.0;
 }
