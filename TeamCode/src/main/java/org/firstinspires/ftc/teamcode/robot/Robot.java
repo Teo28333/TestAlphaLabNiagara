@@ -110,7 +110,7 @@ public class Robot {
 
         // Actually run the selected intake mode and shooter behavior.
         intakeCommands.update();
-        shooter.setRpmOffset(shooterRpmOffset + RobotConstants.TELEOP_SHOOTER_RPM_BIAS);
+        shooter.setRpmOffset(shooterRpmOffset);
         shooter.activateShooter(distanceToShootingGoal(), shooterActive);
         rumbleWhenShooterBecomesReady(gamepad1);
 
@@ -161,8 +161,8 @@ public class Robot {
 
         telemetry.addLine("Shooter");
         telemetry.addData("Shooter active", shooterActive);
+        telemetry.addData("Shooter distance", "%.1f", distanceToShootingGoal());
         telemetry.addData("Shooter RPM offset", "%.0f", shooterRpmOffset);
-        telemetry.addData("TeleOp RPM total offset", "%.0f", shooterRpmOffset + RobotConstants.TELEOP_SHOOTER_RPM_BIAS);
         telemetry.addData("Shooter ready", shooter.isReady());
     }
 
@@ -296,7 +296,7 @@ public class Robot {
 
     private double calculateHeadingLockTurn() {
         // Aim angle is the direction from the robot's current position to the goal.
-        double targetHeading = Math.atan2(shootingGoalY() - robotY(), shootingGoalX() - robotX());
+        double targetHeading = ShootingTarget.headingToGoal(robotX(), robotY(), isBlueAlliance);
         // Normalize keeps the error between -180 and +180 degrees, so the robot turns the short way.
         headingLockErrorRad = normalizeAngle(targetHeading - robotHeading());
         headingLockController.updateError(headingLockErrorRad);
@@ -322,16 +322,6 @@ public class Robot {
                 : RobotConstants.FIELD_CENTRIC_OFFSET_RED_DEG;
     }
 
-    private double shootingGoalX() {
-        // Pick the X coordinate of the goal for the currently selected alliance.
-        return isBlueAlliance ? RobotConstants.SHOOTING_GOAL_X_BLUE : RobotConstants.SHOOTING_GOAL_X_RED;
-    }
-
-    private double shootingGoalY() {
-        // Pick the Y coordinate of the goal for the currently selected alliance.
-        return isBlueAlliance ? RobotConstants.SHOOTING_GOAL_Y_BLUE : RobotConstants.SHOOTING_GOAL_Y_RED;
-    }
-
     private Pose currentFollowerPose() {
         // Copy the follower pose into our own Pose object for storage.
         return new Pose(robotX(), robotY(), robotHeading());
@@ -354,6 +344,6 @@ public class Robot {
 
     private double distanceToShootingGoal() {
         // Hypotenuse distance from robot to goal. Shooter RPM is based on this.
-        return Math.hypot(shootingGoalX() - robotX(), shootingGoalY() - robotY());
+        return ShootingTarget.distanceToGoal(robotX(), robotY(), isBlueAlliance);
     }
 }

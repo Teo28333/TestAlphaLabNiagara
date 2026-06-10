@@ -328,7 +328,7 @@ public class RobotAuton {
             return false;
         }
 
-        targetHeadingRad = Math.atan2(shootingGoalY() - robotY(), shootingGoalX() - robotX());
+        targetHeadingRad = ShootingTarget.headingToGoal(robotX(), robotY(), isBlueAlliance);
         headingLockErrorRad = normalizeAngle(targetHeadingRad - robotHeading());
 
         if (isAimedAtShootingGoal()) {
@@ -360,7 +360,7 @@ public class RobotAuton {
     }
 
     public boolean isAimedAtShootingGoal() {
-        targetHeadingRad = Math.atan2(shootingGoalY() - robotY(), shootingGoalX() - robotX());
+        targetHeadingRad = ShootingTarget.headingToGoal(robotX(), robotY(), isBlueAlliance);
         headingLockErrorRad = normalizeAngle(targetHeadingRad - robotHeading());
         return Math.abs(headingLockErrorRad) <= Math.toRadians(RobotConstants.AUTON_SHOOT_HEADING_TOL_DEG);
     }
@@ -401,6 +401,7 @@ public class RobotAuton {
         telemetry.addData("Intake state", intakeCommands.getState());
         telemetry.addData("Shooter mode", shooterModeEnabled);
         telemetry.addData("Shooter ready", isShooterReady());
+        telemetry.addData("Shooter distance", "%.1f", distanceToShootingGoal());
         telemetry.addData("Auto aim target deg", "%.1f", Math.toDegrees(targetHeadingRad));
         telemetry.addData("Auto aim error deg", "%.1f", Math.toDegrees(headingLockErrorRad));
     }
@@ -445,16 +446,6 @@ public class RobotAuton {
         return follower.getPose().getHeading();
     }
 
-    private double shootingGoalX() {
-        // Pick the goal X coordinate for the selected alliance.
-        return isBlueAlliance ? RobotConstants.SHOOTING_GOAL_X_BLUE : RobotConstants.SHOOTING_GOAL_X_RED;
-    }
-
-    private double shootingGoalY() {
-        // Pick the goal Y coordinate for the selected alliance.
-        return isBlueAlliance ? RobotConstants.SHOOTING_GOAL_Y_BLUE : RobotConstants.SHOOTING_GOAL_Y_RED;
-    }
-
     private double fieldCentricOffsetDeg() {
         // Match TeleOp's alliance drive frame when auto aim temporarily uses teleop drive.
         return isBlueAlliance
@@ -471,7 +462,7 @@ public class RobotAuton {
 
     private double distanceToShootingGoal() {
         // Shooter RPM is based on straight-line distance to the goal.
-        return Math.hypot(shootingGoalX() - robotX(), shootingGoalY() - robotY());
+        return ShootingTarget.distanceToGoal(robotX(), robotY(), isBlueAlliance);
     }
 
     private static double normalizeAngle(double radians) {

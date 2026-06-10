@@ -7,6 +7,6 @@ public class ShooterEquation {
                 + 0.00518183   * Math.pow(distance, 3)
                 - 0.846593     * Math.pow(distance, 2)
                 + 73.04495     * distance
-                + 678.72007;
+                + 1578.72007;
     }
 }

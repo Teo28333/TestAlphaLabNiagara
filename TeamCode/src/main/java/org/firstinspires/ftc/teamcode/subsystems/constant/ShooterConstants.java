@@ -11,7 +11,7 @@ public class ShooterConstants {
     // Derivative gain: reacts to how quickly RPM error is changing.
     public static double kD = 0.0;
     // Feedforward gain: baseline power based on target RPM.
-    public static double kF = 0.0001775;
+    public static double kF = 0.0001875;
     // Static feedforward: small extra power to overcome friction.
     public static double kS = 0.060;
     // Caps integral buildup so the controller does not overcorrect forever.
@@ -22,4 +22,6 @@ public class ShooterConstants {
     public static double rpmTol = 75.0;
     // Auto high-side tolerance. Wider than teleop so overshoot does not block transfer forever.
     public static double autonHighRpmTol = 200.0;
+    // Dashboard-tunable target used by the Shooter Tuning opmode.
+    public static double tuningRPM = 3500.0;
 }

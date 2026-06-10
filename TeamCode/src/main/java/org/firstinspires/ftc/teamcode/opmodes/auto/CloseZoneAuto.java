@@ -9,6 +9,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.robot.RobotAuton;
 import org.firstinspires.ftc.teamcode.robot.RobotConstants;
+import org.firstinspires.ftc.teamcode.robot.ShootingTarget;
 
 abstract class CloseZoneAuto extends OpMode {
     // How long the transfer motors run when feeding balls into the shooter.
@@ -70,11 +71,7 @@ abstract class CloseZoneAuto extends OpMode {
     private static Pose blueShootingPose() {
         double x = 43.295;
         double y = 96.878;
-        return new Pose(x, y, autoAimHeading(x, y, RobotConstants.SHOOTING_GOAL_X_BLUE, RobotConstants.SHOOTING_GOAL_Y_BLUE));
-    }
-
-    private static double autoAimHeading(double robotX, double robotY, double goalX, double goalY) {
-        return Math.atan2(goalY - robotY, goalX - robotX);
+        return new Pose(x, y, ShootingTarget.headingToGoal(x, y, true));
     }
 
     @Override
@@ -229,11 +226,10 @@ abstract class CloseZoneAuto extends OpMode {
             return new Pose(
                     redPose.getX(),
                     redPose.getY(),
-                    autoAimHeading(
+                    ShootingTarget.headingToGoal(
                             redPose.getX(),
                             redPose.getY(),
-                            RobotConstants.SHOOTING_GOAL_X_RED,
-                            RobotConstants.SHOOTING_GOAL_Y_RED
+                            false
                     )
             );
         }

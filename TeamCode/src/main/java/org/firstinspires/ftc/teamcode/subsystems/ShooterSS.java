@@ -101,8 +101,29 @@ public class ShooterSS implements SS_Interface {
         }
     }
 
+    public void runToTargetRPM(double targetRPM) {
+        // Tuning mode bypasses the distance equation and drives directly to the requested RPM.
+        read();
+        targetSpeed = targetRPM;
+        mPow = pidfsController.calculate(targetSpeed, currentRPM);
+        shooterReady = currentRPM > targetSpeed - rpmTol && currentRPM < targetSpeed + rpmTol / 3.0;
+        write();
+    }
+
+    public void stopShooter() {
+        // Shared hard stop for simple tuning opmodes.
+        mPow = 0.0;
+        targetSpeed = 0.0;
+        shooterReady = false;
+        write();
+    }
+
     public boolean isReady() {
         return shooterReady;
+    }
+
+    public double getCurrentRPM() {
+        return currentRPM;
     }
 
     public boolean isReadyForAuton() {

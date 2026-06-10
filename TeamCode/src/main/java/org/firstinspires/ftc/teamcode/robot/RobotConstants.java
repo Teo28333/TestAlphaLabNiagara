@@ -18,8 +18,6 @@ public class RobotConstants {
     public static double TURN_MULTIPLIER = 0.5;
     // One D-pad press changes shooter target by this many RPM.
     public static double SHOOTER_RPM_ADJUST_STEP = 50.0;
-    // Extra RPM used only in TeleOp if driver-controlled shots land short.
-    public static double TELEOP_SHOOTER_RPM_BIAS = 1000.0;
     // Driver/operator RPM trim is clamped to plus or minus this value.
     public static double SHOOTER_RPM_OFFSET_LIMIT = 200.0;
     // Maximum turn power heading lock is allowed to command.
