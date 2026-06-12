@@ -30,7 +30,11 @@ abstract class CloseZoneAuto extends OpMode {
     private Paths paths;
     // Limits how long live auto aim can keep turning while waiting for shooter RPM.
     private final ElapsedTime aimSettleTimer = new ElapsedTime();
+    // Limits how long auto can wait for shooter RPM before continuing the routine.
+    private final ElapsedTime shooterWaitTimer = new ElapsedTime();
     private boolean aimSettleStarted = false;
+    private boolean shooterWaitStarted = false;
+    private boolean shooterWaitTimedOut = false;
     // Outer routine state: this chooses which path/action comes next.
     private State state = State.GO_SHOOT_PRELOAD;
 
@@ -203,6 +207,7 @@ abstract class CloseZoneAuto extends OpMode {
         telemetry.addData("Path progress %", "%.1f", robot.getPathProgressPercent());
         telemetry.addData("Shooter mode", robot.isShooterModeEnabled());
         telemetry.addData("Waiting shooter", isWaitingForShooter());
+        telemetry.addData("Shooter wait timeout", shooterWaitTimedOut);
         telemetry.update();
     }
 
@@ -247,7 +252,15 @@ abstract class CloseZoneAuto extends OpMode {
     private boolean readyToShoot() {
         if (robot.isBusy()) {
             aimSettleStarted = false;
+            shooterWaitStarted = false;
+            shooterWaitTimedOut = false;
             return false;
+        }
+
+        if (!shooterWaitStarted) {
+            shooterWaitTimer.reset();
+            shooterWaitStarted = true;
+            shooterWaitTimedOut = false;
         }
 
         if (!aimSettleStarted) {
@@ -263,13 +276,16 @@ abstract class CloseZoneAuto extends OpMode {
         }
 
         // Transfer only waits for the shooter RPM to be ready.
-        return robot.isShooterReady();
+        double shooterReadyTimeoutMs = Math.max(0.0, RobotConstants.AUTON_SHOOTER_READY_TIMEOUT_MS);
+        shooterWaitTimedOut = shooterWaitTimer.milliseconds() >= shooterReadyTimeoutMs;
+        return robot.isShooterReady() || shooterWaitTimedOut;
     }
 
     private boolean isWaitingForShooter() {
         return robot.isShooterModeEnabled()
                 && !robot.isBusy()
                 && !robot.isShooterReady()
+                && !shooterWaitTimedOut
                 && (state == State.GO_SHOOT_PRELOAD
                 || state == State.GO_SHOOT_FIRST_SPIKE
                 || state == State.GO_SHOOT_SECOND_SPIKE

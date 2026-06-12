@@ -14,6 +14,7 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
@@ -66,9 +67,9 @@ public class IntakeSS implements SS_Interface {
     @Override
     public void write() {
         // This is the only place this subsystem sends cached outputs to hardware.
-        frontRollers.setPower(mPow1);
-        backRoller.setPower(mPow2);
-        gate.setPosition(gatePos);
+        frontRollers.setPower(Range.clip(mPow1, -1.0, 1.0));
+        backRoller.setPower(Range.clip(mPow2, -1.0, 1.0));
+        gate.setPosition(Range.clip(gatePos, 0.0, 1.0));
     }
 
     @Override

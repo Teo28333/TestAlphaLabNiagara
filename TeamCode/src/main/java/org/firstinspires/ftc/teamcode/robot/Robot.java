@@ -323,8 +323,12 @@ public class Robot {
     }
 
     private Pose currentFollowerPose() {
-        // Copy the follower pose into our own Pose object for storage.
-        return new Pose(robotX(), robotY(), robotHeading());
+        // Copy only valid follower poses into storage; otherwise keep the last trusted pose.
+        Pose pose = follower.getPose();
+        if (PoseStorage.isValid(pose)) {
+            return new Pose(pose.getX(), pose.getY(), pose.getHeading());
+        }
+        return PoseStorage.currentPose;
     }
 
     private double robotX() {

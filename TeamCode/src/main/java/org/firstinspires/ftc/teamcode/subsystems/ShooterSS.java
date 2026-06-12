@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.math.PIDFSController;
@@ -63,8 +64,9 @@ public class ShooterSS implements SS_Interface {
     @Override
     public void write() {
         // Both shooter motors get the same power command.
-        leftMotor.setPower(mPow);
-        rightMotor.setPower(mPow);
+        double clippedPower = Range.clip(mPow, -1.0, 1.0);
+        leftMotor.setPower(clippedPower);
+        rightMotor.setPower(clippedPower);
     }
 
     @Override

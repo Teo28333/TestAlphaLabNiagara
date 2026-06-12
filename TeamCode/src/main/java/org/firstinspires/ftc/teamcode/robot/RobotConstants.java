@@ -29,6 +29,8 @@ public class RobotConstants {
     public static double AUTON_AIM_TURN_SIGN_RED = -1.0;
     // Live autonomous aim runs only briefly after each shooting path to avoid slow drift.
     public static double AUTON_AIM_SETTLE_MS = 500.0;
+    // Maximum time auto will wait for shooter RPM before feeding anyway.
+    public static double AUTON_SHOOTER_READY_TIMEOUT_MS = 2000.0;
     // If Pedro cannot finish a path in this time, auto gives up and moves to the next step.
     public static double AUTON_PATH_TIMEOUT_MS = 4500.0;
     // Minimum delay between telemetry packets sent to Driver Station.

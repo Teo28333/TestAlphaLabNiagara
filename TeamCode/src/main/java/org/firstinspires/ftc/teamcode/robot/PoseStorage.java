@@ -10,8 +10,8 @@ public class PoseStorage {
     public static Pose currentPose = new Pose(141.5 / 2.0, 141.5 / 2.0, 0.0);
 
     public static void setCurrentPose(Pose pose) {
-        // Ignore null poses and copy values so outside code cannot mutate this object later.
-        if (pose != null) {
+        // Ignore bad localization samples instead of overwriting the last trusted pose.
+        if (isValid(pose)) {
             currentPose = new Pose(pose.getX(), pose.getY(), pose.getHeading());
         }
     }
@@ -22,15 +22,19 @@ public class PoseStorage {
     }
 
     public static boolean isValid(Pose pose) {
-        // Reject null, NaN, and positions outside the field.
+        // Reject null, NaN/infinite values, and positions outside the field.
         return pose != null
-                && !Double.isNaN(pose.getX())
-                && !Double.isNaN(pose.getY())
-                && !Double.isNaN(pose.getHeading())
+                && isFinite(pose.getX())
+                && isFinite(pose.getY())
+                && isFinite(pose.getHeading())
                 && pose.getX() >= 0.0
                 && pose.getX() <= FIELD_SIZE
                 && pose.getY() >= 0.0
                 && pose.getY() <= FIELD_SIZE;
+    }
+
+    private static boolean isFinite(double value) {
+        return !Double.isNaN(value) && !Double.isInfinite(value);
     }
 
     public static Pose allianceStartPose(boolean isBlueAlliance) {
