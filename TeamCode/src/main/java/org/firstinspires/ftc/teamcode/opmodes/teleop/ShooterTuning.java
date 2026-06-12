@@ -6,9 +6,11 @@ import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
+import org.firstinspires.ftc.teamcode.commands.IntakeCommands;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.teamcode.robot.RobotConstants;
 import org.firstinspires.ftc.teamcode.robot.ShootingTarget;
+import org.firstinspires.ftc.teamcode.subsystems.IntakeSS;
 import org.firstinspires.ftc.teamcode.subsystems.ShooterSS;
 import org.firstinspires.ftc.teamcode.subsystems.constant.ShooterConstants;
 
@@ -21,7 +23,9 @@ public class ShooterTuning extends OpMode {
 
     private Follower follower;
     private ShooterSS shooter;
+    private IntakeCommands intakeCommands;
     private List<LynxModule> controlHubs;
+    private boolean lastIntake = false;
 
     @Override
     public void init() {
@@ -35,6 +39,7 @@ public class ShooterTuning extends OpMode {
         follower.startTeleopDrive();
 
         shooter = new ShooterSS(hardwareMap, telemetry);
+        intakeCommands = new IntakeCommands(new IntakeSS(hardwareMap, telemetry));
     }
 
     @Override
@@ -51,16 +56,46 @@ public class ShooterTuning extends OpMode {
         follower.update();
 
         shooter.runToTargetRPM(ShooterConstants.tuningRPM);
+        updateIntakeCommands();
+        intakeCommands.update();
 
         telemetry.addData("Robot distance to red goal", "%.1f", distanceToRedGoal());
         telemetry.addData("Current speed", "%.0f", shooter.getCurrentRPM());
+        telemetry.addData("Shooter ready", shooter.isReady());
+        telemetry.addData("Intake state", intakeCommands.getState());
         telemetry.update();
+
+        lastIntake = gamepad1.right_bumper;
     }
 
     @Override
     public void stop() {
         if (shooter != null) {
             shooter.stopShooter();
+        }
+        if (intakeCommands != null) {
+            intakeCommands.idle();
+            intakeCommands.update();
+        }
+    }
+
+    private void updateIntakeCommands() {
+        if (gamepad1.left_bumper) {
+            intakeCommands.transfer();
+            return;
+        }
+
+        if (intakeCommands.isTransferring()) {
+            intakeCommands.idle();
+        }
+
+        boolean intakePressed = gamepad1.right_bumper && !lastIntake;
+        if (intakePressed) {
+            if (intakeCommands.isIntaking()) {
+                intakeCommands.idle();
+            } else {
+                intakeCommands.intake();
+            }
         }
     }
 

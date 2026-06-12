@@ -13,7 +13,7 @@ import org.firstinspires.ftc.teamcode.robot.ShootingTarget;
 
 abstract class CloseZoneAuto extends OpMode {
     // How long the transfer motors run when feeding balls into the shooter.
-    private static final double SHOOT_TIME_MS = 1750.0;
+    private static final double SHOOT_TIME_MS = 2500.0;
     // Base path coordinates are written for blue. Red uses Pose.mirror().
     private static final Pose BLUE_START_POSE = new Pose(
             19.034629404617252,

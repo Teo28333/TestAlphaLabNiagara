@@ -1,12 +1,12 @@
 package org.firstinspires.ftc.teamcode.math;
 
 public class ShooterEquation {
+    private static final double MAX_RPM = 6832.09085;
+    private static final double DISTANCE_COEFFICIENT = 0.0101303;
+    private static final double OFFSET = -0.982773;
+
     public double getTargetRPM(double distance) {
-        // Polynomial fit from testing: input is distance to goal, output is shooter RPM.
-        return  -0.0000114126 * Math.pow(distance, 4)
-                + 0.00518183   * Math.pow(distance, 3)
-                - 0.846593     * Math.pow(distance, 2)
-                + 73.04495     * distance
-                + 1578.72007;
+        // Logistic fit from testing: input is distance to goal, output is shooter RPM.
+        return MAX_RPM / (1.0 + Math.exp(-(DISTANCE_COEFFICIENT * distance + OFFSET)));
     }
 }

@@ -10,7 +10,7 @@ public class IntakeConstants {
     // Normal intake motor speed.
     public static double intakeSpeed = 1.0;
     // Speed used when transferring game pieces forward.
-    public static double transferSpeed = 0.875;
+    public static double transferSpeed = 1.0;
     // Servo position that opens the intake gate.
     public static double openPos = 1.0;
     // Servo position that closes the intake gate.
